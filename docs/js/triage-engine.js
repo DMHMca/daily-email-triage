@@ -31,6 +31,24 @@ const NO_REPLY_REQUESTED_RE = /\b(no reply (?:is )?(?:needed|required|necessary)
 const DIRECT_ACTION_CUE_RE = /(\?|\b(please let me know|could you|would you|can you|let us know|get back to me|your thoughts|confirm whether|confirm if|please reply|please respond|please confirm|please advise|are you available|are you free|when would|shall we|happy to discuss|give me a call|awaiting your)\b)/i;
 
 /**
+ * Normalizes an email address for comparison (handles Gmail dot-insensitivity and googlemail.com).
+ */
+export function normalizeEmailForCompare(email = '') {
+  const lower = String(email || '').trim().toLowerCase();
+  const atIdx = lower.indexOf('@');
+  if (atIdx === -1) return lower;
+  let local = lower.slice(0, atIdx);
+  let domain = lower.slice(atIdx + 1);
+  if (domain === 'googlemail.com') domain = 'gmail.com';
+  if (domain === 'gmail.com') {
+    const plusIdx = local.indexOf('+');
+    if (plusIdx !== -1) local = local.slice(0, plusIdx);
+    local = local.replace(/\./g, '');
+  }
+  return `${local}@${domain}`;
+}
+
+/**
  * Parses an email address header such as "Sarah Jenkins <sarah@example.co.uk>"
  * into structured display name + lowercase email address.
  */
@@ -286,8 +304,10 @@ export function evaluateThread(thread, options = {}) {
   }
 
   // Rule 1: Already answered — latest message is in SENT or sent by user
+  const normalizedUser = normalizeEmailForCompare(userEmail);
+  const normalizedSender = normalizeEmailForCompare(sender.email);
   const isLatestSentLabel = labels.includes('SENT');
-  const isLatestFromUser = Boolean(userEmail && sender.email && sender.email === userEmail);
+  const isLatestFromUser = Boolean(normalizedUser && normalizedSender && normalizedSender === normalizedUser);
   if (isLatestSentLabel || isLatestFromUser) {
     return exclude(
       'Already Answered',
@@ -301,9 +321,9 @@ export function evaluateThread(thread, options = {}) {
   }
 
   // Rule 3: CC-only or not directly addressed to user
-  if (userEmail) {
-    const userInTo = toList.some((addr) => addr.email === userEmail);
-    const userInCc = ccList.some((addr) => addr.email === userEmail);
+  if (normalizedUser) {
+    const userInTo = toList.some((addr) => normalizeEmailForCompare(addr.email) === normalizedUser);
+    const userInCc = ccList.some((addr) => normalizeEmailForCompare(addr.email) === normalizedUser);
     if (!userInTo && userInCc) {
       return exclude('CC-Only', 'Your address appears only in CC (not directly addressed in To).');
     }

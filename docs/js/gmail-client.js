@@ -246,19 +246,59 @@ export class SafeGmailClient {
       pageToken = listData.nextPageToken || '';
     } while (pageToken && threadIds.length < 250);
 
-    const normalizedThreads = [];
-    const batchSize = 4;
+    const metadataHeaders = [
+      'From', 'To', 'Cc', 'Subject', 'Reply-To', 'List-Unsubscribe', 'List-Id',
+      'Precedence', 'Auto-Submitted', 'X-Autoreply', 'X-Auto-Response-Suppress',
+      'Message-ID', 'References',
+    ]
+      .map((h) => `metadataHeaders=${encodeURIComponent(h)}`)
+      .join('&');
+
+    // Stage 1: Fetch lightweight metadata for all 7-day threads (fast & low quota)
+    const metaThreads = [];
+    const batchSize = 5;
     for (let i = 0; i < threadIds.length; i += batchSize) {
       const slice = threadIds.slice(i, i + batchSize);
-      onProgress?.(`Auditing threads (${Math.min(i + slice.length, threadIds.length)}/${threadIds.length})…`);
-      const batchResults = await Promise.all(
+      onProgress?.(`Scanning headers (${Math.min(i + slice.length, threadIds.length)}/${threadIds.length})…`);
+      const batchResults = await Promise.allSettled(
+        slice.map((id) =>
+          this.safeFetch(`/threads/${encodeURIComponent(id)}?format=metadata&${metadataHeaders}`, { method: 'GET' })
+        )
+      );
+
+      for (const settled of batchResults) {
+        if (settled.status !== 'fulfilled') continue;
+        const rawThread = settled.value;
+        const messages = (rawThread.messages || []).map((msg) => ({
+          id: msg.id,
+          dateMs: Number(msg.internalDate || 0),
+          labels: msg.labelIds || [],
+          headers: msg.payload?.headers || [],
+          snippet: msg.snippet || '',
+          bodyText: '',
+        }));
+        metaThreads.push({ id: rawThread.id, messages });
+      }
+      if (i + batchSize < threadIds.length) {
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    }
+
+    onProgress?.('Filtering out receipts, newsletters, CC-only & replied threads…');
+    const firstPass = triageThreads(metaThreads, { userEmail, nowMs: Date.now() });
+
+    // Stage 2: Fetch full body ONLY for candidate active threads so summaries & body checks are accurate
+    const candidateIds = firstPass.activeThreads.map((t) => t.threadId);
+    const fullThreads = [];
+    for (let i = 0; i < candidateIds.length; i += batchSize) {
+      const slice = candidateIds.slice(i, i + batchSize);
+      onProgress?.(`Reading ${Math.min(i + slice.length, candidateIds.length)}/${candidateIds.length} candidate emails…`);
+      const batchResults = await Promise.allSettled(
         slice.map((id) => this.safeFetch(`/threads/${encodeURIComponent(id)}?format=full`, { method: 'GET' }))
       );
-      if (i + batchSize < threadIds.length) {
-        await new Promise((r) => setTimeout(r, 200));
-      }
-
-      for (const rawThread of batchResults) {
+      for (const settled of batchResults) {
+        if (settled.status !== 'fulfilled') continue;
+        const rawThread = settled.value;
         const messages = (rawThread.messages || []).map((msg) => ({
           id: msg.id,
           dateMs: Number(msg.internalDate || 0),
@@ -267,14 +307,20 @@ export class SafeGmailClient {
           snippet: msg.snippet || '',
           bodyText: extractBodyFromPayload(msg.payload),
         }));
-        normalizedThreads.push({ id: rawThread.id, messages });
+        fullThreads.push({ id: rawThread.id, messages });
       }
     }
 
-    onProgress?.('Applying strict triage & exclusion rules…');
-    const result = triageThreads(normalizedThreads, { userEmail, nowMs: Date.now() });
+    const secondPass = triageThreads(fullThreads, { userEmail, nowMs: Date.now() });
+    const allExcluded = [...firstPass.excludedThreads, ...secondPass.excludedThreads].sort(
+      (a, b) => (b.dateMs || 0) - (a.dateMs || 0)
+    );
+
     return {
-      ...result,
+      activeThreads: secondPass.activeThreads,
+      excludedThreads: allExcluded,
+      evaluatedCount: metaThreads.length,
+      syncedAt: secondPass.syncedAt,
       userEmail,
     };
   }
