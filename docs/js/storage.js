@@ -155,7 +155,7 @@ export function mergeTriagedThreads(existingThreads = [], freshThreads = []) {
   // Also retain any Pending or Handled/Archived threads that have user notes or drafts even if they aged past 7 days
   const freshIds = new Set(freshThreads.map((t) => t.threadId));
   for (const prev of existingThreads) {
-    if (!freshIds.has(prev.threadId) && (prev.status === 'pending' || prev.status === 'archived' || prev.notes || prev.draft)) {
+    if (!freshIds.has(prev.threadId) && (prev.status === 'pending' || prev.status === 'archived' || prev.status === 'no_action' || prev.notes || prev.draft)) {
       merged.push(prev);
     }
   }

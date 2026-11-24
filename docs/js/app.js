@@ -4,18 +4,18 @@
  * Mode: Strict Draft-Only (No Send UI, No Send Scope, Blank-by-Default Notes & Drafts)
  */
 
-import { ALLOWED_GMAIL_SCOPES } from './safety.js?v=2.1';
-import { triageThreads } from './triage-engine.js?v=2.1';
-import { produceBritishDraft } from './british-drafter.js?v=2.1';
-import { buildDemoRawThreads } from './demo-data.js?v=2.1';
-import { SafeGmailClient } from './gmail-client.js?v=2.1';
+import { ALLOWED_GMAIL_SCOPES } from './safety.js?v=2.2';
+import { triageThreads } from './triage-engine.js?v=2.2';
+import { produceBritishDraft } from './british-drafter.js?v=2.2';
+import { buildDemoRawThreads } from './demo-data.js?v=2.2';
+import { SafeGmailClient } from './gmail-client.js?v=2.2';
 import {
   loadWorkspaceState,
   saveWorkspaceState,
   mergeTriagedThreads,
   buildDraftsExportText,
-} from './storage.js?v=2.1';
-import { BritishDictationController, isSpeechRecognitionSupported } from './speech.js?v=2.1';
+} from './storage.js?v=2.2';
+import { BritishDictationController, isSpeechRecognitionSupported } from './speech.js?v=2.2';
 
 const gmailClient = new SafeGmailClient();
 const dictation = new BritishDictationController();
@@ -39,6 +39,7 @@ const el = {
   tabButtons: Array.from(document.querySelectorAll('[data-tab]')),
   countActive: document.getElementById('count-active'),
   countPending: document.getElementById('count-pending'),
+  countNoAction: document.getElementById('count-no-action'),
   countArchived: document.getElementById('count-archived'),
   threadList: document.getElementById('threadList'),
   excludedCountBadge: document.getElementById('excludedCountBadge'),
@@ -148,10 +149,12 @@ function renderStatusHeader() {
 
   const activeCount = state.threads.filter((t) => t.status === 'active').length;
   const pendingCount = state.threads.filter((t) => t.status === 'pending').length;
+  const noActionCount = state.threads.filter((t) => t.status === 'no_action').length;
   const archivedCount = state.threads.filter((t) => t.status === 'archived').length;
 
   el.countActive.textContent = String(activeCount);
   el.countPending.textContent = String(pendingCount);
+  el.countNoAction.textContent = String(noActionCount);
   el.countArchived.textContent = String(archivedCount);
 
   for (const btn of el.tabButtons) {
@@ -335,12 +338,17 @@ function createEmailCard(thread) {
   pendBtn.className = 'btn btn-ghost btn-pend';
   pendBtn.textContent = thread.status === 'pending' ? 'Move to Active' : 'Pend';
 
+  const noActionBtn = document.createElement('button');
+  noActionBtn.type = 'button';
+  noActionBtn.className = 'btn btn-ghost';
+  noActionBtn.textContent = thread.status === 'no_action' ? 'Move to Active' : 'No Action Required';
+
   const archiveBtn = document.createElement('button');
   archiveBtn.type = 'button';
   archiveBtn.className = 'btn btn-ghost btn-archive';
   archiveBtn.textContent = thread.status === 'archived' ? 'Reopen' : 'Archive / Done';
 
-  statusActions.append(pendBtn, archiveBtn);
+  statusActions.append(pendBtn, noActionBtn, archiveBtn);
   actionsBar.append(produceBtn, copyBtn, saveDraftBtn, statusActions);
 
   // Wire up per-card event handlers
@@ -492,6 +500,17 @@ function createEmailCard(thread) {
     );
   });
 
+  noActionBtn.addEventListener('click', async () => {
+    if (dictation.activeThreadId === thread.threadId) dictation.stop();
+    thread.status = thread.status === 'no_action' ? 'active' : 'no_action';
+    await persistNow();
+    renderAll();
+    showToast(
+      thread.status === 'no_action' ? 'Marked No Action Required.' : 'Returned to All Active.',
+      'info'
+    );
+  });
+
   archiveBtn.addEventListener('click', async () => {
     if (dictation.activeThreadId === thread.threadId) dictation.stop();
     thread.status = thread.status === 'archived' ? 'active' : 'archived';
@@ -535,6 +554,9 @@ function renderThreadList() {
     } else if (currentTab === 'pending') {
       title.textContent = 'No Pending threads';
       body.textContent = 'Use Pend on any email card to park it here for later review.';
+    } else if (currentTab === 'no_action') {
+      title.textContent = 'No "No Action Required" threads';
+      body.textContent = 'Use No Action Required on any email card that needs no reply or work.';
     } else {
       title.textContent = 'No Handled / Archived threads yet';
       body.textContent = 'Threads you mark Archive / Done will appear here.';

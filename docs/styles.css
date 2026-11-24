@@ -145,8 +145,8 @@ body {
 /* Filter Tabs */
 .tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
   background: var(--surface-muted);
   padding: 4px;
   border-radius: var(--radius-md);
