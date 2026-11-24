@@ -162,7 +162,7 @@ export class SafeGmailClient {
     });
   }
 
-  async safeFetch(path, options = {}) {
+  async safeFetch(path, options = {}, attempt = 0) {
     const method = (options.method || 'GET').toUpperCase();
     const url = path.startsWith('http') ? path : `${GMAIL_API_BASE}${path}`;
 
@@ -197,6 +197,17 @@ export class SafeGmailClient {
       } catch {
         // Ignore parse error
       }
+
+      const isQuotaError =
+        res.status === 429 ||
+        (res.status === 403 && /quota|rate\s*limit|user-?rate/i.test(detail));
+
+      if (isQuotaError && attempt < 3) {
+        const delayMs = 1500 * Math.pow(2, attempt);
+        await new Promise((r) => setTimeout(r, delayMs));
+        return this.safeFetch(path, options, attempt + 1);
+      }
+
       throw new Error(`Gmail API error: ${detail}`);
     }
 
@@ -236,13 +247,16 @@ export class SafeGmailClient {
     } while (pageToken && threadIds.length < 250);
 
     const normalizedThreads = [];
-    const batchSize = 8;
+    const batchSize = 4;
     for (let i = 0; i < threadIds.length; i += batchSize) {
       const slice = threadIds.slice(i, i + batchSize);
       onProgress?.(`Auditing threads (${Math.min(i + slice.length, threadIds.length)}/${threadIds.length})…`);
       const batchResults = await Promise.all(
         slice.map((id) => this.safeFetch(`/threads/${encodeURIComponent(id)}?format=full`, { method: 'GET' }))
       );
+      if (i + batchSize < threadIds.length) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
 
       for (const rawThread of batchResults) {
         const messages = (rawThread.messages || []).map((msg) => ({
