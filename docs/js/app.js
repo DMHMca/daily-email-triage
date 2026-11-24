@@ -667,8 +667,9 @@ async function runSync({ interactive = true, forceDemo = false } = {}) {
     }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : 'Sync failed.';
+    const errStack = err instanceof Error && err.stack ? ` (${err.stack.split('\n').slice(0, 2).join(' | ').trim()})` : '';
     el.syncErrorBox.hidden = false;
-    el.syncErrorBox.textContent = `Sync issue: ${errMsg}`;
+    el.syncErrorBox.textContent = `Sync issue: ${errMsg}${errStack}`;
     showToast(errMsg, 'error');
   } finally {
     isSyncing = false;
