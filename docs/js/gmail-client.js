@@ -157,7 +157,7 @@ export class SafeGmailClient {
       });
 
       this.tokenClient.requestAccessToken({
-        prompt: interactive ? 'consent' : '',
+        prompt: interactive ? '' : 'none',
       });
     });
   }
@@ -176,6 +176,7 @@ export class SafeGmailClient {
     const res = await fetch(url, {
       ...options,
       method,
+      signal: options.signal || (typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined),
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         'Content-Type': 'application/json',
@@ -230,9 +231,9 @@ export class SafeGmailClient {
     onProgress?.('Checking Gmail profile…');
     const userEmail = await this.fetchProfile();
 
-    onProgress?.(`Fetching threads from the past ${ROLLING_WINDOW_DAYS} days…`);
+    onProgress?.(`Fetching thread list from the past ${ROLLING_WINDOW_DAYS} days…`);
     const query = encodeURIComponent(`newer_than:${ROLLING_WINDOW_DAYS}d -in:spam -in:trash`);
-    const threadIds = [];
+    const listedThreads = [];
     let pageToken = '';
 
     do {
@@ -240,11 +241,34 @@ export class SafeGmailClient {
       const listData = await this.safeFetch(`/threads?q=${query}&maxResults=100${pageParam}`, { method: 'GET' });
       if (Array.isArray(listData.threads)) {
         for (const t of listData.threads) {
-          if (t.id) threadIds.push(t.id);
+          if (t.id) listedThreads.push({ id: t.id, historyId: t.historyId || '' });
         }
       }
       pageToken = listData.nextPageToken || '';
-    } while (pageToken && threadIds.length < 250);
+    } while (pageToken && listedThreads.length < 250);
+
+    // Load cached thread evaluations by threadId + historyId so unchanged threads take 0ms
+    const cacheKey = `tri_mail_thread_cache_v1_${userEmail}`;
+    let threadCache = {};
+    try {
+      threadCache = JSON.parse(localStorage.getItem(cacheKey) || '{}');
+    } catch {
+      threadCache = {};
+    }
+
+    const toFetchIds = [];
+    const cachedActive = [];
+    const cachedExcluded = [];
+
+    for (const item of listedThreads) {
+      const hit = threadCache[item.id];
+      if (hit && hit.historyId && hit.historyId === item.historyId && hit.decision) {
+        if (hit.decision === 'include') cachedActive.push(hit.record);
+        else cachedExcluded.push(hit.record);
+      } else {
+        toFetchIds.push(item.id);
+      }
+    }
 
     const metadataHeaders = [
       'From', 'To', 'Cc', 'Subject', 'Reply-To', 'List-Unsubscribe', 'List-Id',
@@ -254,12 +278,15 @@ export class SafeGmailClient {
       .map((h) => `metadataHeaders=${encodeURIComponent(h)}`)
       .join('&');
 
-    // Stage 1: Fetch lightweight metadata for all 7-day threads (fast & low quota)
+    // Stage 1: Fetch lightweight metadata ONLY for new/changed threads
     const metaThreads = [];
-    const batchSize = 4;
-    for (let i = 0; i < threadIds.length; i += batchSize) {
-      const slice = threadIds.slice(i, i + batchSize);
-      onProgress?.(`Scanning headers (${Math.min(i + slice.length, threadIds.length)}/${threadIds.length})…`);
+    const historyByThreadId = new Map(listedThreads.map((t) => [t.id, t.historyId]));
+    const batchSize = 8;
+    let firstBatchError = '';
+
+    for (let i = 0; i < toFetchIds.length; i += batchSize) {
+      const slice = toFetchIds.slice(i, i + batchSize);
+      onProgress?.(`Scanning new threads (${Math.min(i + slice.length, toFetchIds.length)}/${toFetchIds.length})…`);
       const batchResults = await Promise.allSettled(
         slice.map((id) =>
           this.safeFetch(`/threads/${encodeURIComponent(id)}?format=metadata&${metadataHeaders}`, { method: 'GET' })
@@ -267,7 +294,10 @@ export class SafeGmailClient {
       );
 
       for (const settled of batchResults) {
-        if (settled.status !== 'fulfilled') continue;
+        if (settled.status !== 'fulfilled') {
+          if (!firstBatchError) firstBatchError = settled.reason?.message || 'Thread fetch failed';
+          continue;
+        }
         const rawThread = settled.value;
         const messages = (rawThread.messages || []).map((msg) => ({
           id: msg.id,
@@ -279,15 +309,25 @@ export class SafeGmailClient {
         }));
         metaThreads.push({ id: rawThread.id, messages });
       }
-      if (i + batchSize < threadIds.length) {
-        await new Promise((r) => setTimeout(r, 250));
+      if (i + batchSize < toFetchIds.length) {
+        await new Promise((r) => setTimeout(r, 80));
       }
+    }
+
+    if (toFetchIds.length > 0 && metaThreads.length === 0 && cachedActive.length === 0 && cachedExcluded.length === 0) {
+      throw new Error(firstBatchError || `Could not load ${toFetchIds.length} threads from Gmail.`);
     }
 
     onProgress?.('Filtering out receipts, newsletters, CC-only & replied threads…');
     const firstPass = triageThreads(metaThreads, { userEmail, nowMs: Date.now() });
 
-    // Stage 2: Fetch full body ONLY for candidate active threads so summaries & body checks are accurate
+    // Cache metadata-excluded threads immediately
+    for (const excl of firstPass.excludedThreads) {
+      const hId = historyByThreadId.get(excl.threadId) || '';
+      if (hId) threadCache[excl.threadId] = { historyId: hId, decision: 'exclude', record: excl };
+    }
+
+    // Stage 2: Fetch full body ONLY for new/changed candidate active threads
     const candidateIds = firstPass.activeThreads.map((t) => t.threadId);
     const fullThreads = [];
     for (let i = 0; i < candidateIds.length; i += batchSize) {
@@ -312,15 +352,38 @@ export class SafeGmailClient {
     }
 
     const secondPass = triageThreads(fullThreads, { userEmail, nowMs: Date.now() });
-    const allExcluded = [...firstPass.excludedThreads, ...secondPass.excludedThreads].sort(
+    for (const inc of secondPass.activeThreads) {
+      const hId = historyByThreadId.get(inc.threadId) || '';
+      if (hId) threadCache[inc.threadId] = { historyId: hId, decision: 'include', record: inc };
+    }
+    for (const excl of secondPass.excludedThreads) {
+      const hId = historyByThreadId.get(excl.threadId) || '';
+      if (hId) threadCache[excl.threadId] = { historyId: hId, decision: 'exclude', record: excl };
+    }
+
+    // Trim cache to listed 7-day threads so it never grows unbounded
+    const listedSet = new Set(listedThreads.map((t) => t.id));
+    for (const k of Object.keys(threadCache)) {
+      if (!listedSet.has(k)) delete threadCache[k];
+    }
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(threadCache));
+    } catch {
+      // Ignore storage quota error on cache
+    }
+
+    const allActive = [...cachedActive, ...secondPass.activeThreads].sort(
+      (a, b) => (b.dateMs || 0) - (a.dateMs || 0)
+    );
+    const allExcluded = [...cachedExcluded, ...firstPass.excludedThreads, ...secondPass.excludedThreads].sort(
       (a, b) => (b.dateMs || 0) - (a.dateMs || 0)
     );
 
     return {
-      activeThreads: secondPass.activeThreads,
+      activeThreads: allActive,
       excludedThreads: allExcluded,
-      evaluatedCount: metaThreads.length,
-      syncedAt: secondPass.syncedAt,
+      evaluatedCount: listedThreads.length,
+      syncedAt: new Date().toISOString(),
       userEmail,
     };
   }
