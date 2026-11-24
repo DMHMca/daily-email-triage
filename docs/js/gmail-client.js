@@ -8,8 +8,8 @@
  * Strictly NO email-sending capability anywhere in this client.
  */
 
-import { GMAIL_SCOPE_STRING, assertSafeGmailEndpoint, assertSafeScopeString } from './safety.js?v=2.0';
-import { triageThreads, ROLLING_WINDOW_DAYS } from './triage-engine.js?v=2.0';
+import { GMAIL_SCOPE_STRING, assertSafeGmailEndpoint, assertSafeScopeString } from './safety.js?v=2.1';
+import { triageThreads, ROLLING_WINDOW_DAYS } from './triage-engine.js?v=2.1';
 
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 

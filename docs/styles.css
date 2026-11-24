@@ -621,14 +621,30 @@ body {
   border-top: 1px solid var(--border);
 }
 
+.audit-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+
 .audit-search {
   width: 100%;
-  margin: 12px 0;
+  margin: 0;
   padding: 10px 12px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 0.9rem;
+}
+
+.audit-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+  color: var(--ink-secondary);
+  cursor: pointer;
 }
 
 .excluded-list {

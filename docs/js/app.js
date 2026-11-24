@@ -4,18 +4,18 @@
  * Mode: Strict Draft-Only (No Send UI, No Send Scope, Blank-by-Default Notes & Drafts)
  */
 
-import { ALLOWED_GMAIL_SCOPES } from './safety.js?v=2.0';
-import { triageThreads } from './triage-engine.js?v=2.0';
-import { produceBritishDraft } from './british-drafter.js?v=2.0';
-import { buildDemoRawThreads } from './demo-data.js?v=2.0';
-import { SafeGmailClient } from './gmail-client.js?v=2.0';
+import { ALLOWED_GMAIL_SCOPES } from './safety.js?v=2.1';
+import { triageThreads } from './triage-engine.js?v=2.1';
+import { produceBritishDraft } from './british-drafter.js?v=2.1';
+import { buildDemoRawThreads } from './demo-data.js?v=2.1';
+import { SafeGmailClient } from './gmail-client.js?v=2.1';
 import {
   loadWorkspaceState,
   saveWorkspaceState,
   mergeTriagedThreads,
   buildDraftsExportText,
-} from './storage.js?v=2.0';
-import { BritishDictationController, isSpeechRecognitionSupported } from './speech.js?v=2.0';
+} from './storage.js?v=2.1';
+import { BritishDictationController, isSpeechRecognitionSupported } from './speech.js?v=2.1';
 
 const gmailClient = new SafeGmailClient();
 const dictation = new BritishDictationController();
@@ -24,6 +24,7 @@ let state = null;
 let currentTab = 'active'; // 'active' | 'pending' | 'archived'
 let isSyncing = false;
 let excludedFilterQuery = '';
+let showBulkExcluded = false;
 let saveTimer = null;
 
 // DOM refs
@@ -42,6 +43,7 @@ const el = {
   threadList: document.getElementById('threadList'),
   excludedCountBadge: document.getElementById('excludedCountBadge'),
   excludedSearchInput: document.getElementById('excludedSearchInput'),
+  showBulkExcludedCheckbox: document.getElementById('showBulkExcludedCheckbox'),
   excludedList: document.getElementById('excludedList'),
   settingsModal: document.getElementById('settingsModal'),
   closeSettingsBtn: document.getElementById('closeSettingsBtn'),
@@ -549,13 +551,23 @@ function renderThreadList() {
   el.threadList.appendChild(fragment);
 }
 
+const BULK_EXCLUDED_CATEGORIES = new Set([
+  'Newsletter / Marketing',
+  'Automated Alert',
+  'eBay Message',
+]);
+
 function renderExcludedLog() {
   const allExcluded = state.excludedThreads || [];
-  el.excludedCountBadge.textContent = String(allExcluded.length);
+  const relevantExcluded = showBulkExcluded
+    ? allExcluded
+    : allExcluded.filter((item) => !BULK_EXCLUDED_CATEGORIES.has(item.category));
+
+  el.excludedCountBadge.textContent = String(relevantExcluded.length);
 
   const q = excludedFilterQuery.trim().toLowerCase();
   const visible = q
-    ? allExcluded.filter(
+    ? relevantExcluded.filter(
         (item) =>
           item.senderName.toLowerCase().includes(q) ||
           item.senderEmail.toLowerCase().includes(q) ||
@@ -563,7 +575,7 @@ function renderExcludedLog() {
           item.category.toLowerCase().includes(q) ||
           item.reason.toLowerCase().includes(q)
       )
-    : allExcluded;
+    : relevantExcluded;
 
   el.excludedList.innerHTML = '';
 
@@ -878,6 +890,11 @@ async function init() {
 
   el.excludedSearchInput.addEventListener('input', () => {
     excludedFilterQuery = el.excludedSearchInput.value;
+    renderExcludedLog();
+  });
+
+  el.showBulkExcludedCheckbox.addEventListener('change', () => {
+    showBulkExcluded = el.showBulkExcludedCheckbox.checked;
     renderExcludedLog();
   });
 

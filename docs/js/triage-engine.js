@@ -320,21 +320,7 @@ export function evaluateThread(thread, options = {}) {
     return exclude('eBay Message', 'Excluded eBay notification or marketplace message.');
   }
 
-  // Rule 3: CC-only or not directly addressed to user
-  if (normalizedUser) {
-    const userInTo = toList.some((addr) => normalizeEmailForCompare(addr.email) === normalizedUser);
-    const userInCc = ccList.some((addr) => normalizeEmailForCompare(addr.email) === normalizedUser);
-    if (!userInTo && userInCc) {
-      return exclude('CC-Only', 'Your address appears only in CC (not directly addressed in To).');
-    }
-    if (!userInTo && toList.length > 0) {
-      return exclude('Not Directly Addressed', 'Not directly addressed to you in the To field (group/mailing list or BCC).');
-    }
-  } else if (toList.length === 0 && ccList.length > 0) {
-    return exclude('CC-Only', 'No direct To recipient; appears to be CC-only.');
-  }
-
-  // Rule 4: Newsletters & marketing / bulk mail
+  // Rule 3: Newsletters & marketing / bulk mail (check before To/CC so marketing lists are tagged accurately)
   const isBulkPrecedence = /\b(bulk|list|junk|auto_reply)\b/i.test(precedence);
   const isPromoOrSocial =
     labels.includes('CATEGORY_PROMOTIONS') ||
@@ -356,7 +342,7 @@ export function evaluateThread(thread, options = {}) {
     return exclude('Newsletter / Marketing', detail);
   }
 
-  // Rule 5: Routine receipts, invoices, order & delivery confirmations
+  // Rule 4: Routine receipts, invoices, order & delivery confirmations
   if (RECEIPT_SUBJECT_RE.test(subject) || RECEIPT_SENDER_DOMAIN_RE.test(sender.email)) {
     const detail = RECEIPT_SENDER_DOMAIN_RE.test(sender.email)
       ? `Routine commercial/delivery sender (${sender.email}) — receipt or order update.`
@@ -364,7 +350,7 @@ export function evaluateThread(thread, options = {}) {
     return exclude('Receipt / Order Confirmation', detail);
   }
 
-  // Rule 6: Automated alerts & no-reply system messages
+  // Rule 5: Automated alerts & no-reply system messages
   const isAutoSubmitted = Boolean(autoSubmitted && autoSubmitted.toLowerCase() !== 'no');
   const isNoReplySender = NOREPLY_LOCAL_RE.test(sender.email);
   if (isAutoSubmitted || autoReply || isNoReplySender || ALERT_SUBJECT_RE.test(subject)) {
@@ -374,6 +360,20 @@ export function evaluateThread(thread, options = {}) {
         ? 'Automated system, security, calendar, or service alert.'
         : 'Marked with automated mail headers (Auto-Submitted / X-Autoreply).';
     return exclude('Automated Alert', detail);
+  }
+
+  // Rule 6: CC-only or not directly addressed to user
+  if (normalizedUser) {
+    const userInTo = toList.some((addr) => normalizeEmailForCompare(addr.email) === normalizedUser);
+    const userInCc = ccList.some((addr) => normalizeEmailForCompare(addr.email) === normalizedUser);
+    if (!userInTo && userInCc) {
+      return exclude('CC-Only', 'Your address appears only in CC (not directly addressed in To).');
+    }
+    if (!userInTo && toList.length > 0) {
+      return exclude('Not Directly Addressed', 'Not directly addressed to you in the To field (group/mailing list or BCC).');
+    }
+  } else if (toList.length === 0 && ccList.length > 0) {
+    return exclude('CC-Only', 'No direct To recipient; appears to be CC-only.');
   }
 
   // Rule 7: No direct reply requested (explicit FYI / automated update without questions)
