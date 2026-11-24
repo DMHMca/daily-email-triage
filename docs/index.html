@@ -22,7 +22,7 @@
         <div class="brand-row">
           <div class="brand-title-group">
             <h1 class="app-title">Tri-Mail</h1>
-            <p class="app-subtitle">Daily Draft Workspace · David McAughtry</p>
+            <p class="app-subtitle">Daily Draft Workspace · David McAughtry · v1.4</p>
           </div>
           <span class="safety-badge" title="No Send button exists and gmail.send is never requested">
             <span class="safety-dot" aria-hidden="true"></span>
@@ -31,11 +31,13 @@
         </div>
 
         <p id="syncStatusText" class="sync-status" aria-live="polite">Loading workspace…</p>
+        <div id="syncErrorBox" class="sync-error-box" hidden role="alert"></div>
 
         <div class="global-actions">
           <button id="refreshBtn" type="button" class="btn btn-primary btn-sm">Refresh / Sync Now</button>
           <button id="exportBtn" type="button" class="btn btn-secondary btn-sm">Export Drafts</button>
           <button id="settingsBtn" type="button" class="btn btn-ghost btn-sm">Setup &amp; Settings</button>
+          <button id="updateAppBtn" type="button" class="btn btn-ghost btn-sm">Check Update</button>
         </div>
 
         <nav class="tabs" role="tablist" aria-label="Email queue views">

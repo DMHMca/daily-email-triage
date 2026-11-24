@@ -256,7 +256,7 @@ export class SafeGmailClient {
 
     // Stage 1: Fetch lightweight metadata for all 7-day threads (fast & low quota)
     const metaThreads = [];
-    const batchSize = 5;
+    const batchSize = 4;
     for (let i = 0; i < threadIds.length; i += batchSize) {
       const slice = threadIds.slice(i, i + batchSize);
       onProgress?.(`Scanning headers (${Math.min(i + slice.length, threadIds.length)}/${threadIds.length})…`);
@@ -280,7 +280,7 @@ export class SafeGmailClient {
         metaThreads.push({ id: rawThread.id, messages });
       }
       if (i + batchSize < threadIds.length) {
-        await new Promise((r) => setTimeout(r, 150));
+        await new Promise((r) => setTimeout(r, 250));
       }
     }
 

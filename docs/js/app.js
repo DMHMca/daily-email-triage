@@ -29,10 +29,12 @@ let saveTimer = null;
 // DOM refs
 const el = {
   syncStatusText: document.getElementById('syncStatusText'),
+  syncErrorBox: document.getElementById('syncErrorBox'),
   modeBanner: document.getElementById('modeBanner'),
   refreshBtn: document.getElementById('refreshBtn'),
   exportBtn: document.getElementById('exportBtn'),
   settingsBtn: document.getElementById('settingsBtn'),
+  updateAppBtn: document.getElementById('updateAppBtn'),
   tabButtons: Array.from(document.querySelectorAll('[data-tab]')),
   countActive: document.getElementById('count-active'),
   countPending: document.getElementById('count-pending'),
@@ -623,6 +625,8 @@ function renderAll() {
 async function runSync({ interactive = true, forceDemo = false } = {}) {
   if (isSyncing) return;
   isSyncing = true;
+  el.syncErrorBox.hidden = true;
+  el.syncErrorBox.textContent = '';
   el.refreshBtn.disabled = true;
   el.refreshBtn.textContent = 'Syncing…';
   renderStatusHeader();
@@ -643,7 +647,7 @@ async function runSync({ interactive = true, forceDemo = false } = {}) {
       state.excludedThreads = result.excludedThreads;
       await persistNow();
       showToast(
-        `Synced 7-day inbox: ${result.activeThreads.length} requiring reply, ${result.excludedThreads.length} excluded & audited.`,
+        `Synced ${result.evaluatedCount} threads: ${result.activeThreads.length} requiring reply, ${result.excludedThreads.length} excluded.`,
         'success'
       );
     } else {
@@ -662,7 +666,10 @@ async function runSync({ interactive = true, forceDemo = false } = {}) {
       );
     }
   } catch (err) {
-    showToast(err instanceof Error ? err.message : 'Sync failed.', 'error');
+    const errMsg = err instanceof Error ? err.message : 'Sync failed.';
+    el.syncErrorBox.hidden = false;
+    el.syncErrorBox.textContent = `Sync issue: ${errMsg}`;
+    showToast(errMsg, 'error');
   } finally {
     isSyncing = false;
     el.refreshBtn.disabled = false;
@@ -767,28 +774,21 @@ async function handleResetPreview() {
 let swRegistration = null;
 let reloadingForUpdate = false;
 
+function showUpdateAvailableButton() {
+  if (el.updateAppBtn) {
+    el.updateAppBtn.textContent = 'Update Available';
+    el.updateAppBtn.className = 'btn btn-update-ready btn-sm';
+  }
+}
+
 function promptOrApplyAppUpdate() {
   if (reloadingForUpdate) return;
+  showUpdateAvailableButton();
   const activeTag = document.activeElement?.tagName;
   if (activeTag !== 'TEXTAREA' && activeTag !== 'INPUT') {
     reloadingForUpdate = true;
     window.location.reload();
-    return;
   }
-
-  el.modeBanner.hidden = false;
-  el.modeBanner.innerHTML = '';
-  const msg = document.createElement('span');
-  msg.textContent = 'A newer version of Tri-Mail is ready.';
-  const updateBtn = document.createElement('button');
-  updateBtn.type = 'button';
-  updateBtn.className = 'btn btn-inline';
-  updateBtn.textContent = 'Update Now';
-  updateBtn.addEventListener('click', () => {
-    reloadingForUpdate = true;
-    window.location.reload();
-  });
-  el.modeBanner.append(msg, updateBtn);
 }
 
 function registerServiceWorker() {
@@ -867,6 +867,7 @@ async function init() {
   el.refreshBtn.addEventListener('click', () => runSync({ interactive: true }));
   el.exportBtn.addEventListener('click', exportDraftsToTxt);
   el.settingsBtn.addEventListener('click', openSettingsModal);
+  el.updateAppBtn.addEventListener('click', handleCheckForUpdate);
   el.closeSettingsBtn.addEventListener('click', closeSettingsModal);
   el.checkUpdateBtn.addEventListener('click', handleCheckForUpdate);
   el.settingsForm.addEventListener('submit', handleSettingsSave);
