@@ -8,8 +8,8 @@
  * Strictly NO email-sending capability anywhere in this client.
  */
 
-import { GMAIL_SCOPE_STRING, assertSafeGmailEndpoint, assertSafeScopeString } from './safety.js?v=1.9';
-import { triageThreads, ROLLING_WINDOW_DAYS } from './triage-engine.js?v=1.9';
+import { GMAIL_SCOPE_STRING, assertSafeGmailEndpoint, assertSafeScopeString } from './safety.js?v=2.0';
+import { triageThreads, ROLLING_WINDOW_DAYS } from './triage-engine.js?v=2.0';
 
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
@@ -231,10 +231,10 @@ export class SafeGmailClient {
     onProgress?.('Checking Gmail profile…');
     const userEmail = await this.fetchProfile();
 
-    onProgress?.(`Fetching inbox threads from the past ${ROLLING_WINDOW_DAYS} days…`);
-    // Pre-filter bulk Promotions/Social/Forums in Gmail's query so we stay well under per-minute API quotas
+    onProgress?.(`Fetching Primary Inbox threads from the past ${ROLLING_WINDOW_DAYS} days…`);
+    // Restrict strictly to Primary Inbox so Spam, Trash, Archived, Promotions, Social, Updates & Forums are never scanned
     const query = encodeURIComponent(
-      `newer_than:${ROLLING_WINDOW_DAYS}d -in:spam -in:trash -category:promotions -category:social -category:forums`
+      `in:inbox category:primary newer_than:${ROLLING_WINDOW_DAYS}d -in:spam -in:trash`
     );
     const listedThreads = [];
     let pageToken = '';

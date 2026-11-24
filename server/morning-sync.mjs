@@ -97,7 +97,7 @@ async function fetchLiveThreads(accessToken) {
   const profile = await safeGmailGet(accessToken, '/profile');
   const userEmail = String(profile.emailAddress || '').toLowerCase();
 
-  const query = encodeURIComponent(`newer_than:${ROLLING_WINDOW_DAYS}d -in:spam -in:trash`);
+  const query = encodeURIComponent(`in:inbox category:primary newer_than:${ROLLING_WINDOW_DAYS}d -in:spam -in:trash`);
   const threadIds = [];
   let pageToken = '';
 
