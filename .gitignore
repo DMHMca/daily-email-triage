@@ -1,0 +1,13 @@
+# Sensitive credentials, OAuth tokens, and personal email data (NEVER commit!)
+secrets/
+data/
+logs/
+.env
+.env.*
+*.local.json
+
+# OS / Editor / Node
+node_modules/
+.DS_Store
+Thumbs.db
+*.log

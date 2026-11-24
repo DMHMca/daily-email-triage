@@ -1,0 +1,32 @@
+{
+  "name": "Daily Email Triage & Draft Workspace",
+  "short_name": "Email Triage",
+  "description": "Mobile-first Draft-Only morning email triage and British English drafting workspace for David McAughtry.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F6F4EE",
+  "theme_color": "#1F4E5F",
+  "lang": "en-GB",
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1F4E5F">
+  <meta name="description" content="Daily Email Triage & Draft Workspace for David McAughtry — Draft-Only British English morning email review PWA.">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Email Triage">
+  <title>Daily Email Triage &amp; Draft Workspace</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand-row">
+          <div class="brand-title-group">
+            <h1 class="app-title">Daily Email Triage</h1>
+            <p class="app-subtitle">Draft Workspace · David McAughtry</p>
+          </div>
+          <span class="safety-badge" title="No Send button exists and gmail.send is never requested">
+            <span class="safety-dot" aria-hidden="true"></span>
+            Draft-Only
+          </span>
+        </div>
+
+        <p id="syncStatusText" class="sync-status" aria-live="polite">Loading workspace…</p>
+
+        <div class="global-actions">
+          <button id="refreshBtn" type="button" class="btn btn-primary btn-sm">Refresh / Sync Now</button>
+          <button id="exportBtn" type="button" class="btn btn-secondary btn-sm">Export Drafts</button>
+          <button id="settingsBtn" type="button" class="btn btn-ghost btn-sm">Setup &amp; Settings</button>
+        </div>
+
+        <nav class="tabs" role="tablist" aria-label="Email queue views">
+          <button type="button" class="tab-btn active" role="tab" aria-selected="true" data-tab="active">
+            All Active <span id="count-active" class="tab-count">0</span>
+          </button>
+          <button type="button" class="tab-btn" role="tab" aria-selected="false" data-tab="pending">
+            Pending <span id="count-pending" class="tab-count">0</span>
+          </button>
+          <button type="button" class="tab-btn" role="tab" aria-selected="false" data-tab="archived">
+            Handled / Archived <span id="count-archived" class="tab-count">0</span>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <div id="modeBanner" class="mode-banner" hidden></div>
+
+      <section id="threadList" class="thread-list" aria-label="Vetted email threads"></section>
+
+      <section class="audit-section" aria-label="Audited and excluded threads">
+        <details class="audit-details">
+          <summary class="audit-summary">
+            <span class="audit-title-wrap">
+              <strong>Audited &amp; Excluded Threads</strong>
+              <span class="audit-subtitle">Rolling 7-day transparency log</span>
+            </span>
+            <span id="excludedCountBadge" class="audit-count">0</span>
+          </summary>
+
+          <div class="audit-body">
+            <label for="excludedSearchInput" class="sr-only">Filter excluded threads</label>
+            <input
+              id="excludedSearchInput"
+              type="search"
+              class="audit-search"
+              placeholder="Filter excluded threads by sender, subject, or reason…"
+            >
+            <ul id="excludedList" class="excluded-list"></ul>
+          </div>
+        </details>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>
+        <strong>Strict Draft-Only Mode:</strong> Permitted scopes are restricted exclusively to
+        <code>gmail.readonly</code> and <code>gmail.compose</code>. Emails are never sent from this workspace.
+      </p>
+    </footer>
+  </div>
+
+  <dialog id="settingsModal" class="settings-modal" aria-labelledby="settingsModalTitle">
+    <div class="modal-card">
+      <header class="modal-header">
+        <div>
+          <h2 id="settingsModalTitle">Setup &amp; Settings</h2>
+          <p class="modal-subtitle">Draft-Only Gmail Connection &amp; British English Preferences</p>
+        </div>
+        <button id="closeSettingsBtn" type="button" class="btn-icon" aria-label="Close settings">&times;</button>
+      </header>
+
+      <div id="connectionStatusPill" class="conn-pill">Preview Mode</div>
+
+      <form id="settingsForm" class="settings-form">
+        <div class="form-field">
+          <label for="clientIdInput">Google OAuth Client ID (Web Application)</label>
+          <input
+            id="clientIdInput"
+            type="text"
+            placeholder="1234567890-abcdefg.apps.googleusercontent.com"
+            autocomplete="off"
+          >
+          <small>
+            Authorised JavaScript origin for this deployment:
+            <code id="originDisplay"></code>
+          </small>
+        </div>
+
+        <div class="modal-btn-row">
+          <button id="connectGmailBtn" type="button" class="btn btn-primary">Connect Gmail (Draft-Only)</button>
+          <button id="disconnectGmailBtn" type="button" class="btn btn-ghost">Disconnect</button>
+          <button id="loadDemoBtn" type="button" class="btn btn-secondary">Load Sample Inbox</button>
+        </div>
+
+        <div class="safety-box">
+          <strong>Enforced OAuth Scopes (Read + Drafts Only):</strong>
+          <pre id="scopeListDisplay" class="scope-pre"></pre>
+        </div>
+
+        <div class="form-field">
+          <label for="geminiKeyInput">Optional Gemini API Key (stored only on this device)</label>
+          <input
+            id="geminiKeyInput"
+            type="password"
+            placeholder="Leave blank to use built-in British English composer"
+            autocomplete="off"
+          >
+          <small>If left blank, <em>Produce Draft</em> runs 100% locally using the built-in British English composer.</small>
+        </div>
+
+        <div class="form-row-two">
+          <div class="form-field">
+            <label for="morningTimeInput">Morning Refresh Time (UK)</label>
+            <input id="morningTimeInput" type="time" value="06:30">
+          </div>
+          <div class="form-field">
+            <label for="signOffNameInput">Draft Sign-off Name</label>
+            <input id="signOffNameInput" type="text" value="David McAughtry">
+          </div>
+        </div>
+
+        <details class="setup-guide">
+          <summary>One-Time Google Cloud Console OAuth Checklist</summary>
+          <ol>
+            <li>Open <strong>console.cloud.google.com</strong> and create (or select) a project, e.g. <em>Daily Email Triage</em>.</li>
+            <li>Go to <strong>APIs &amp; Services → Library</strong> and enable the <strong>Gmail API</strong>.</li>
+            <li>Go to <strong>Google Auth Platform → Audience / OAuth consent screen</strong>, choose <strong>External</strong>, keep status in <strong>Testing</strong>, and add David's Gmail address under <strong>Test users</strong>.</li>
+            <li>Under <strong>Data Access / Scopes</strong>, add ONLY <code>gmail.readonly</code> and <code>gmail.compose</code>. Do <strong>not</strong> add any send scope.</li>
+            <li>Go to <strong>Clients → Create OAuth client ID → Web application</strong>, add the origin shown above under <strong>Authorised JavaScript origins</strong>, and paste the Client ID into the box above.</li>
+          </ol>
+        </details>
+
+        <div class="modal-footer-actions">
+          <button type="submit" class="btn btn-primary">Save Settings</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
