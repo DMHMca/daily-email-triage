@@ -59,8 +59,8 @@ export function parseAddress(raw = '') {
   const angleMatch = cleaned.match(/^(?:"?([^"<]*?)"?\s*)?<([^>]+)>/);
   if (angleMatch) {
     return {
-      name: angleMatch[1].trim().replace(/^['"]|['"]$/g, ''),
-      email: angleMatch[2].trim().toLowerCase(),
+      name: (angleMatch[1] || '').trim().replace(/^['"]|['"]$/g, ''),
+      email: (angleMatch[2] || '').trim().toLowerCase(),
     };
   }
 

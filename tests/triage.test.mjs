@@ -134,6 +134,32 @@ test('Triage Engine: Includes direct unreplied 7-day threads and excludes all ma
   }
 });
 
+test('Triage Engine: Handles angle-bracket-only addresses like <user@example.com> without crashing', () => {
+  const nowMs = Date.now();
+  const userEmail = 'david@example.co.uk';
+  const res = evaluateThread(
+    {
+      id: 'angle-only-1',
+      messages: [
+        {
+          id: 'm1',
+          dateMs: nowMs - 1000 * 60 * 60,
+          labels: ['INBOX'],
+          headers: {
+            From: '<jane@example.co.uk>',
+            To: `<${userEmail}>`,
+            Subject: 'Quick question',
+          },
+          bodyText: 'Could you confirm Tuesday at 10am?',
+        },
+      ],
+    },
+    { userEmail, nowMs }
+  );
+  assert.equal(res.decision, 'include');
+  assert.equal(res.record.senderEmail, 'jane@example.co.uk');
+});
+
 test('Triage Engine: Excludes FYI / no reply requested messages', () => {
   const nowMs = Date.now();
   const userEmail = 'david@example.co.uk';

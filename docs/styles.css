@@ -206,6 +206,10 @@ body {
   flex: 1;
 }
 
+.mode-banner[hidden] {
+  display: none;
+}
+
 .mode-banner {
   display: flex;
   flex-wrap: wrap;
