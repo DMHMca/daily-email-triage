@@ -231,8 +231,11 @@ export class SafeGmailClient {
     onProgress?.('Checking Gmail profile…');
     const userEmail = await this.fetchProfile();
 
-    onProgress?.(`Fetching thread list from the past ${ROLLING_WINDOW_DAYS} days…`);
-    const query = encodeURIComponent(`newer_than:${ROLLING_WINDOW_DAYS}d -in:spam -in:trash`);
+    onProgress?.(`Fetching inbox threads from the past ${ROLLING_WINDOW_DAYS} days…`);
+    // Pre-filter bulk Promotions/Social/Forums in Gmail's query so we stay well under per-minute API quotas
+    const query = encodeURIComponent(
+      `newer_than:${ROLLING_WINDOW_DAYS}d -in:spam -in:trash -category:promotions -category:social -category:forums`
+    );
     const listedThreads = [];
     let pageToken = '';
 
@@ -241,11 +244,13 @@ export class SafeGmailClient {
       const listData = await this.safeFetch(`/threads?q=${query}&maxResults=100${pageParam}`, { method: 'GET' });
       if (Array.isArray(listData.threads)) {
         for (const t of listData.threads) {
-          if (t.id) listedThreads.push({ id: t.id, historyId: t.historyId || '' });
+          if (t.id && listedThreads.length < 120) {
+            listedThreads.push({ id: t.id, historyId: t.historyId || '' });
+          }
         }
       }
       pageToken = listData.nextPageToken || '';
-    } while (pageToken && listedThreads.length < 250);
+    } while (pageToken && listedThreads.length < 120);
 
     // Load cached thread evaluations by threadId + historyId so unchanged threads take 0ms
     const cacheKey = `tri_mail_thread_cache_v1_${userEmail}`;
