@@ -3,7 +3,7 @@
  * Caches static PWA shell files ONLY (never caches Gmail API responses or OAuth tokens).
  */
 
-const CACHE_NAME = 'email-triage-shell-v8';
+const CACHE_NAME = 'email-triage-shell-v9';
 const APP_SHELL_ASSETS = [
   './',
   './index.html',

@@ -4,18 +4,18 @@
  * Mode: Strict Draft-Only (No Send UI, No Send Scope, Blank-by-Default Notes & Drafts)
  */
 
-import { ALLOWED_GMAIL_SCOPES } from './safety.js';
-import { triageThreads } from './triage-engine.js';
-import { produceBritishDraft } from './british-drafter.js';
-import { buildDemoRawThreads } from './demo-data.js';
-import { SafeGmailClient } from './gmail-client.js';
+import { ALLOWED_GMAIL_SCOPES } from './safety.js?v=1.9';
+import { triageThreads } from './triage-engine.js?v=1.9';
+import { produceBritishDraft } from './british-drafter.js?v=1.9';
+import { buildDemoRawThreads } from './demo-data.js?v=1.9';
+import { SafeGmailClient } from './gmail-client.js?v=1.9';
 import {
   loadWorkspaceState,
   saveWorkspaceState,
   mergeTriagedThreads,
   buildDraftsExportText,
-} from './storage.js';
-import { BritishDictationController, isSpeechRecognitionSupported } from './speech.js';
+} from './storage.js?v=1.9';
+import { BritishDictationController, isSpeechRecognitionSupported } from './speech.js?v=1.9';
 
 const gmailClient = new SafeGmailClient();
 const dictation = new BritishDictationController();
