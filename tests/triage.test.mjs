@@ -226,7 +226,7 @@ test('Storage merge & export: Preserves user work across syncs and exports non-e
 
 test('PWA Assets: Valid manifest.json, Service Worker, and PNG icons exist', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs', 'manifest.json'), 'utf8'));
-  assert.equal(manifest.name, 'Daily Email Triage & Draft Workspace');
+  assert.equal(manifest.name, 'Tri-Mail');
   assert.equal(manifest.display, 'standalone');
   assert.equal(manifest.start_url, './');
   assert.ok(manifest.icons.length >= 2);

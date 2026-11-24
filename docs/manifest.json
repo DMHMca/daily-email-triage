@@ -1,7 +1,7 @@
 {
-  "name": "Daily Email Triage & Draft Workspace",
-  "short_name": "Email Triage",
-  "description": "Mobile-first Draft-Only morning email triage and British English drafting workspace for David McAughtry.",
+  "name": "Tri-Mail",
+  "short_name": "Tri-Mail",
+  "description": "Tri-Mail — Mobile-first Draft-Only morning email triage and British English drafting workspace for David McAughtry.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
