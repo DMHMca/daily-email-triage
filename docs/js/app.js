@@ -43,6 +43,7 @@ const el = {
   excludedList: document.getElementById('excludedList'),
   settingsModal: document.getElementById('settingsModal'),
   closeSettingsBtn: document.getElementById('closeSettingsBtn'),
+  checkUpdateBtn: document.getElementById('checkUpdateBtn'),
   settingsForm: document.getElementById('settingsForm'),
   clientIdInput: document.getElementById('clientIdInput'),
   geminiKeyInput: document.getElementById('geminiKeyInput'),
@@ -763,13 +764,75 @@ async function handleResetPreview() {
   await runSync({ forceDemo: true });
 }
 
+let swRegistration = null;
+let reloadingForUpdate = false;
+
+function promptOrApplyAppUpdate() {
+  if (reloadingForUpdate) return;
+  const activeTag = document.activeElement?.tagName;
+  if (activeTag !== 'TEXTAREA' && activeTag !== 'INPUT') {
+    reloadingForUpdate = true;
+    window.location.reload();
+    return;
+  }
+
+  el.modeBanner.hidden = false;
+  el.modeBanner.innerHTML = '';
+  const msg = document.createElement('span');
+  msg.textContent = 'A newer version of Tri-Mail is ready.';
+  const updateBtn = document.createElement('button');
+  updateBtn.type = 'button';
+  updateBtn.className = 'btn btn-inline';
+  updateBtn.textContent = 'Update Now';
+  updateBtn.addEventListener('click', () => {
+    reloadingForUpdate = true;
+    window.location.reload();
+  });
+  el.modeBanner.append(msg, updateBtn);
+}
+
 function registerServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {
-        // Non-fatal in non-secure dev environments
-      });
-    });
+  if (!('serviceWorker' in navigator)) return;
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    promptOrApplyAppUpdate();
+  });
+
+  window.addEventListener('load', async () => {
+    try {
+      swRegistration = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+      swRegistration.update().catch(() => {});
+    } catch {
+      // Non-fatal in non-secure dev environments
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && swRegistration) {
+      swRegistration.update().catch(() => {});
+    }
+  });
+}
+
+async function handleCheckForUpdate() {
+  if (!('serviceWorker' in navigator)) {
+    window.location.reload();
+    return;
+  }
+  try {
+    const reg = swRegistration || (await navigator.serviceWorker.getRegistration('./'));
+    if (reg) {
+      await reg.update();
+      if (reg.waiting) {
+        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        showToast('Applying update…', 'info');
+        return;
+      }
+    }
+    showToast('Reloading latest version of Tri-Mail…', 'info');
+    setTimeout(() => window.location.reload(), 300);
+  } catch {
+    window.location.reload();
   }
 }
 
@@ -805,6 +868,7 @@ async function init() {
   el.exportBtn.addEventListener('click', exportDraftsToTxt);
   el.settingsBtn.addEventListener('click', openSettingsModal);
   el.closeSettingsBtn.addEventListener('click', closeSettingsModal);
+  el.checkUpdateBtn.addEventListener('click', handleCheckForUpdate);
   el.settingsForm.addEventListener('submit', handleSettingsSave);
   el.connectGmailBtn.addEventListener('click', handleConnectGmail);
   el.disconnectGmailBtn.addEventListener('click', handleDisconnectGmail);
