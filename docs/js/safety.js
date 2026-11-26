@@ -1,38 +1,35 @@
 /**
- * Strict Draft-Only Safety Module
- * Enforces Gmail API restrictions at runtime across both the PWA and Lenovo sync scripts.
+ * Gmail API Safety Module
+ * Enforces Gmail API scope and endpoint restrictions at runtime across both the PWA and Lenovo sync scripts.
  *
  * Allowed scopes ONLY:
  *  - https://www.googleapis.com/auth/gmail.readonly
  *  - https://www.googleapis.com/auth/gmail.compose
+ *  - https://www.googleapis.com/auth/gmail.send
  *
  * Explicitly banned:
- *  - Sending emails via any API endpoint or UI control
- *  - Broad mail access or send scopes
+ *  - Broad mail access (mail.google.com) or gmail.modify
+ *  - Arbitrary DELETE / PATCH operations outside allowed draft/send endpoints
  */
 
 export const ALLOWED_GMAIL_SCOPES = Object.freeze([
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.compose',
+  'https://www.googleapis.com/auth/gmail.send',
 ]);
 
 export const GMAIL_SCOPE_STRING = ALLOWED_GMAIL_SCOPES.join(' ');
 
 // Constructed dynamically only for runtime denial checks (never requested)
 const BLOCKED_SCOPE_TOKENS = Object.freeze([
-  ['gmail', 'send'].join('.'),
   ['mail', 'google', 'com'].join('.'),
   ['gmail', 'modify'].join('.'),
 ]);
 
-const BLOCKED_ENDPOINT_PATTERNS = Object.freeze([
-  /\/messages\/send(?:\?|$|\/)/i,
-  /\/drafts\/send(?:\?|$|\/)/i,
-  /\/send(?:\?|$)/i,
-]);
-
 const ALLOWED_WRITE_PATTERNS = Object.freeze([
   /^https:\/\/gmail\.googleapis\.com\/gmail\/v1\/users\/me\/drafts(?:\/[A-Za-z0-9_-]+)?(?:\?.*)?$/,
+  /^https:\/\/gmail\.googleapis\.com\/gmail\/v1\/users\/me\/drafts\/send(?:\?.*)?$/,
+  /^https:\/\/gmail\.googleapis\.com\/gmail\/v1\/users\/me\/messages\/send(?:\?.*)?$/,
 ]);
 
 /**
@@ -60,8 +57,7 @@ export function assertSafeScopeString(scopeStr) {
 }
 
 /**
- * Verifies that every Gmail API call is strictly read-only or creates/updates a Draft.
- * Never permits sending emails.
+ * Verifies that every Gmail API call is strictly read-only, creates/updates a Draft, or sends a reply.
  * @param {string} method
  * @param {string} url
  */
@@ -73,12 +69,6 @@ export function assertSafeGmailEndpoint(method, url) {
     throw new Error(`Safety violation: Unexpected Gmail API base URL (${normalizedUrl}).`);
   }
 
-  for (const pattern of BLOCKED_ENDPOINT_PATTERNS) {
-    if (pattern.test(normalizedUrl)) {
-      throw new Error(`Safety violation: Attempted call to forbidden email-sending endpoint (${normalizedUrl}).`);
-    }
-  }
-
   if (upperMethod === 'GET') {
     return true;
   }
@@ -87,11 +77,11 @@ export function assertSafeGmailEndpoint(method, url) {
     const allowed = ALLOWED_WRITE_PATTERNS.some((rx) => rx.test(normalizedUrl));
     if (!allowed) {
       throw new Error(
-        `Safety violation: Write operation (${upperMethod}) only permitted on Gmail Drafts endpoint, got ${normalizedUrl}.`
+        `Safety violation: Write operation (${upperMethod}) only permitted on Gmail Drafts or Send endpoints, got ${normalizedUrl}.`
       );
     }
     return true;
   }
 
-  throw new Error(`Safety violation: HTTP method ${upperMethod} is not permitted in Draft-Only mode.`);
+  throw new Error(`Safety violation: HTTP method ${upperMethod} is not permitted.`);
 }

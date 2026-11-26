@@ -4,18 +4,18 @@
  * Mode: Strict Draft-Only (No Send UI, No Send Scope, Blank-by-Default Notes & Drafts)
  */
 
-import { ALLOWED_GMAIL_SCOPES } from './safety.js?v=2.2';
-import { triageThreads } from './triage-engine.js?v=2.2';
-import { produceBritishDraft } from './british-drafter.js?v=2.2';
-import { buildDemoRawThreads } from './demo-data.js?v=2.2';
-import { SafeGmailClient } from './gmail-client.js?v=2.2';
+import { ALLOWED_GMAIL_SCOPES } from './safety.js?v=2.3';
+import { triageThreads } from './triage-engine.js?v=2.3';
+import { produceBritishDraft } from './british-drafter.js?v=2.3';
+import { buildDemoRawThreads } from './demo-data.js?v=2.3';
+import { SafeGmailClient } from './gmail-client.js?v=2.3';
 import {
   loadWorkspaceState,
   saveWorkspaceState,
   mergeTriagedThreads,
   buildDraftsExportText,
-} from './storage.js?v=2.2';
-import { BritishDictationController, isSpeechRecognitionSupported } from './speech.js?v=2.2';
+} from './storage.js?v=2.3';
+import { BritishDictationController, isSpeechRecognitionSupported } from './speech.js?v=2.3';
 
 const gmailClient = new SafeGmailClient();
 const dictation = new BritishDictationController();
@@ -311,7 +311,7 @@ function createEmailCard(thread) {
 
   draftGroup.append(draftLabelRow, draftInput);
 
-  // 5. Per-Thread Actions (NO "Send" button anywhere!)
+  // 5. Per-Thread Actions
   const actionsBar = document.createElement('div');
   actionsBar.className = 'card-actions';
 
@@ -329,6 +329,11 @@ function createEmailCard(thread) {
   saveDraftBtn.type = 'button';
   saveDraftBtn.className = 'btn btn-secondary btn-gmail-draft';
   saveDraftBtn.textContent = thread.gmailDraftId ? 'Update Gmail Draft' : 'Save to Gmail Drafts';
+
+  const sendBtn = document.createElement('button');
+  sendBtn.type = 'button';
+  sendBtn.className = 'btn btn-send';
+  sendBtn.textContent = thread.gmailSentAt ? 'Send Again' : 'Send Email';
 
   const statusActions = document.createElement('div');
   statusActions.className = 'status-actions';
@@ -349,7 +354,7 @@ function createEmailCard(thread) {
   archiveBtn.textContent = thread.status === 'archived' ? 'Reopen' : 'Archive / Done';
 
   statusActions.append(pendBtn, noActionBtn, archiveBtn);
-  actionsBar.append(produceBtn, copyBtn, saveDraftBtn, statusActions);
+  actionsBar.append(produceBtn, copyBtn, saveDraftBtn, sendBtn, statusActions);
 
   // Wire up per-card event handlers
   dictateBtn.addEventListener('click', () => {
@@ -489,6 +494,54 @@ function createEmailCard(thread) {
     }
   });
 
+  sendBtn.addEventListener('click', async () => {
+    const draftText = draftInput.value.trim();
+    if (!draftText) {
+      showToast('Generate or write a reply before sending.', 'warn');
+      return;
+    }
+
+    if (state.mode !== 'gmail' || !state.settings.googleClientId) {
+      showToast('Connect Gmail in Settings to send emails.', 'warn');
+      openSettingsModal();
+      return;
+    }
+
+    const recipient = thread.replyToEmail || thread.senderEmail;
+    const confirmed = window.confirm(
+      `Send this reply now to ${recipient}?\n\nSubject: Re: ${thread.subject || '(No subject)'}`
+    );
+    if (!confirmed) return;
+
+    sendBtn.disabled = true;
+    const prevLabel = sendBtn.textContent;
+    sendBtn.textContent = 'Sending…';
+
+    try {
+      const sent = await gmailClient.sendReply({
+        clientId: state.settings.googleClientId,
+        threadId: thread.threadId,
+        to: recipient,
+        subject: thread.subject,
+        body: draftText,
+        inReplyTo: thread.messageIdHeader,
+        references: thread.referencesHeader,
+      });
+
+      thread.gmailSentAt = sent.sentAt;
+      thread.gmailSentMessageId = sent.messageId;
+      thread.status = 'archived';
+      await persistNow();
+      renderAll();
+      showToast(`Email sent to ${recipient}.`, 'success');
+    } catch (err) {
+      sendBtn.textContent = prevLabel;
+      showToast(err instanceof Error ? err.message : 'Could not send email.', 'error');
+    } finally {
+      sendBtn.disabled = false;
+    }
+  });
+
   pendBtn.addEventListener('click', async () => {
     if (dictation.activeThreadId === thread.threadId) dictation.stop();
     thread.status = thread.status === 'pending' ? 'active' : 'pending';
@@ -527,7 +580,10 @@ function createEmailCard(thread) {
 }
 
 function updateDraftBadge(badgeEl, thread) {
-  if (thread.gmailDraftId) {
+  if (thread.gmailSentAt) {
+    badgeEl.textContent = 'Sent via Gmail';
+    badgeEl.className = 'draft-status-badge saved';
+  } else if (thread.gmailDraftId) {
     badgeEl.textContent = 'Saved in Gmail Drafts';
     badgeEl.className = 'draft-status-badge saved';
   } else if (String(thread.draft || '').trim()) {
@@ -743,7 +799,7 @@ function openSettingsModal() {
 
   const connected = state.mode === 'gmail' && gmailClient.isSignedIn();
   el.connectionStatusPill.textContent = connected
-    ? `Connected to ${state.userEmail || 'Gmail'} (Draft-Only)`
+    ? `Connected to ${state.userEmail || 'Gmail'} (Read + Drafts + Send)`
     : state.mode === 'gmail'
       ? 'Gmail configured — tap Connect / Refresh to sign in'
       : 'Currently in Preview Mode (Sample Inbox)';

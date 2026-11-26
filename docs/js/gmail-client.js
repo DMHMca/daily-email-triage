@@ -8,8 +8,8 @@
  * Strictly NO email-sending capability anywhere in this client.
  */
 
-import { GMAIL_SCOPE_STRING, assertSafeGmailEndpoint, assertSafeScopeString } from './safety.js?v=2.2';
-import { triageThreads, ROLLING_WINDOW_DAYS } from './triage-engine.js?v=2.2';
+import { GMAIL_SCOPE_STRING, assertSafeGmailEndpoint, assertSafeScopeString } from './safety.js?v=2.3';
+import { triageThreads, ROLLING_WINDOW_DAYS } from './triage-engine.js?v=2.3';
 
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
@@ -432,6 +432,34 @@ export class SafeGmailClient {
     return {
       draftId: created.id,
       savedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Sends a reply directly via Gmail API (/messages/send).
+   */
+  async sendReply({ clientId, threadId, to, subject, body, inReplyTo = '', references = '' }) {
+    if (!String(body || '').trim()) {
+      throw new Error('Draft reply is blank. Produce or write a reply before sending.');
+    }
+
+    await this.ensureAuthorized(clientId, { interactive: true });
+
+    const mime = buildDraftMimeMessage({ to, subject, body, inReplyTo, references });
+    const raw = encodeUtf8ToBase64Url(mime);
+    const payload = {
+      raw,
+      threadId,
+    };
+
+    const sent = await this.safeFetch('/messages/send', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return {
+      messageId: sent.id || '',
+      threadId: sent.threadId || threadId,
+      sentAt: new Date().toISOString(),
     };
   }
 }

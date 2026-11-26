@@ -22,21 +22,20 @@ import { mergeTriagedThreads, buildDraftsExportText } from '../docs/js/storage.j
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 
-test('Strict Safety: Allowed scopes are strictly gmail.readonly and gmail.compose', () => {
+test('Safety: Allowed scopes are gmail.readonly, gmail.compose, and gmail.send', () => {
   assert.deepEqual([...ALLOWED_GMAIL_SCOPES], [
     'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/gmail.compose',
+    'https://www.googleapis.com/auth/gmail.send',
   ]);
   assert.equal(assertSafeScopeString(GMAIL_SCOPE_STRING), true);
 
-  const sendScope = `https://www.googleapis.com/auth/${['gmail', 'send'].join('.')}`;
   const fullScope = `https://${['mail', 'google', 'com'].join('.')}/`;
-  assert.throws(() => assertSafeScopeString(sendScope), /Forbidden OAuth scope/);
   assert.throws(() => assertSafeScopeString(fullScope), /Forbidden OAuth scope/);
   assert.throws(() => assertSafeScopeString('https://www.googleapis.com/auth/gmail.modify'), /Forbidden OAuth scope/);
 });
 
-test('Strict Safety: Gmail API runtime guard blocks all send endpoints and allows read + drafts', () => {
+test('Safety: Gmail API runtime guard allows read, drafts, and send, and blocks DELETE or broad writes', () => {
   assert.equal(
     assertSafeGmailEndpoint('GET', 'https://gmail.googleapis.com/gmail/v1/users/me/threads?q=newer_than:7d'),
     true
@@ -49,38 +48,28 @@ test('Strict Safety: Gmail API runtime guard blocks all send endpoints and allow
     assertSafeGmailEndpoint('PUT', 'https://gmail.googleapis.com/gmail/v1/users/me/drafts/r12345'),
     true
   );
+  assert.equal(
+    assertSafeGmailEndpoint('POST', 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send'),
+    true
+  );
+  assert.equal(
+    assertSafeGmailEndpoint('POST', 'https://gmail.googleapis.com/gmail/v1/users/me/drafts/send'),
+    true
+  );
 
-  assert.throws(
-    () => assertSafeGmailEndpoint('POST', 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send'),
-    /forbidden email-sending endpoint/i
-  );
-  assert.throws(
-    () => assertSafeGmailEndpoint('POST', 'https://gmail.googleapis.com/gmail/v1/users/me/drafts/send'),
-    /forbidden email-sending endpoint/i
-  );
   assert.throws(
     () => assertSafeGmailEndpoint('DELETE', 'https://gmail.googleapis.com/gmail/v1/users/me/threads/123'),
     /not permitted/i
   );
 });
 
-test('Strict Safety: Static source audit confirms zero Send buttons and zero send-scope requests', () => {
-  const html = fs.readFileSync(path.join(ROOT, 'docs', 'index.html'), 'utf8');
+test('UI & Client Audit: Send Email button and sendReply method are wired up', () => {
   const appJs = fs.readFileSync(path.join(ROOT, 'docs', 'js', 'app.js'), 'utf8');
   const gmailJs = fs.readFileSync(path.join(ROOT, 'docs', 'js', 'gmail-client.js'), 'utf8');
-  const syncJs = fs.readFileSync(path.join(ROOT, 'server', 'morning-sync.mjs'), 'utf8');
 
-  // Verify no button label says "Send" or "Send Email" or "Send Reply"
-  assert.doesNotMatch(html, /<button[^>]*>\s*send\b/i);
-  assert.doesNotMatch(appJs, /textContent\s*=\s*['"`][^'"`]*\bsend\b/i);
-
-  // Verify no API call targets /messages/send or /drafts/send
-  for (const src of [appJs, gmailJs, syncJs]) {
-    assert.doesNotMatch(src, /messages\/send/i);
-    assert.doesNotMatch(src, /drafts\/send/i);
-    assert.doesNotMatch(src, /auth\/gmail\.send/i);
-    assert.doesNotMatch(src, /https:\/\/mail\.google\.com/i);
-  }
+  assert.match(appJs, /Send Email/);
+  assert.match(gmailJs, /async sendReply\s*\(/);
+  assert.match(gmailJs, /\/messages\/send/);
 });
 
 test('Triage Engine: Includes direct unreplied 7-day threads and excludes all mandatory categories with reasons', () => {

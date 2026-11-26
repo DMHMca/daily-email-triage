@@ -468,6 +468,16 @@ body {
   background: var(--primary-hover);
 }
 
+.btn-send {
+  background: var(--success, #1f6f4a);
+  color: #ffffff;
+  border-color: var(--success, #1f6f4a);
+}
+
+.btn-send:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+
 .btn-secondary {
   background: var(--surface);
   color: var(--ink);
